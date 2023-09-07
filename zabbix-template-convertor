@@ -58,7 +58,9 @@ class ConversionRule(object):
 		Return a string representation describing the conversion rule.
 		"""
 
-		raise NotImplementedError('__str__ method not implemented for %s' % self.__class__.__name__)
+		raise NotImplementedError(
+			f'__str__ method not implemented for {self.__class__.__name__}'
+		)
 
 	def apply(self):
 		"""
@@ -66,7 +68,9 @@ class ConversionRule(object):
 		rule does not apply for the desired output version (self.version).
 		"""
 		
-		raise NotImplementedError('apply method not implemented for %s' % self.__class__.__name__)
+		raise NotImplementedError(
+			f'apply method not implemented for {self.__class__.__name__}'
+		)
 
 	def versioncmp(self, version):
 		"""
@@ -93,7 +97,7 @@ class VersionMustMatch(ConversionRule):
 		elif self.versioncmp('3.3') < 0: self.outversion = '3.2'
 		else:
 			self.outversion = 'unknown'
-			raise ValueError('Unsupported output version: %s' % self.version)
+			raise ValueError(f'Unsupported output version: {self.version}')
 
 		root.find('version').text = self.outversion
 
@@ -134,7 +138,7 @@ class FixMissingValueMaps(ConversionRule):
 			raise NotApplicableError()
 
 		for itemtype in ( 'item', 'item_prototype' ):
-			for node in self.root.findall('.//%s/valuemap' % itemtype):
+			for node in self.root.findall(f'.//{itemtype}/valuemap'):
 				node.clear()
 
 class FixDiscoveryRuleFilters(ConversionRule):
@@ -155,38 +159,36 @@ class FixDiscoveryRuleFilters(ConversionRule):
 			discovery_rule_name = discovery_rule.find('name').text
 			node = discovery_rule.find('filter')
 
-			# check if multi-filter can be downgraded to filter expression
-			if (
-				node.find('evaltype').text == '0'
-				and node.find('formula').text in ('1', None)
+			if node.find('evaltype').text != '0' or node.find('formula').text not in (
+				'1',
+				None,
 			):
-				conditions = node.find('conditions')
-				
-				if len(conditions) == 0:
-					# default blank filter
-					node.clear()
+				raise ValueError('malformed discovery rule filter in \'%s\'' % discovery_rule_name)
+			conditions = node.find('conditions')
 
-				elif len(conditions) > 1:
-					# multi-filter has too many conditions
-					warn('Filter for discovery rule \'%s\' has multiple conditions and cannot be converted - dropping' % discovery_rule_name)
-					node.clear()
+			if len(conditions) == 0:
+				# default blank filter
+				node.clear()
 
-				else:
-					condition = conditions[0]
-					if (
+			elif len(conditions) > 1:
+				# multi-filter has too many conditions
+				warn('Filter for discovery rule \'%s\' has multiple conditions and cannot be converted - dropping' % discovery_rule_name)
+				node.clear()
+
+			else:
+				condition = conditions[0]
+				if (
 						condition.findtext('.//operator') == '8'
 						and condition.findtext('.//formulaid') == 'A'
 					):
 						# convert to filter expression
-						filter_str = '%s:%s' % (condition.findtext('macro'), condition.findtext('value'))
-						node.clear()
-						node.text = filter_str
-					else:
-						# unsupported operator or formula id
-						warn('filter condition for discovery rule \'%s\' uses an operator or formula ID that cannot be converted - dropping' % discovery_rule_name)
-						node.clear()
-			else:
-				raise ValueError('malformed discovery rule filter in \'%s\'' % discovery_rule_name)
+					filter_str = f"{condition.findtext('macro')}:{condition.findtext('value')}"
+					node.clear()
+					node.text = filter_str
+				else:
+					# unsupported operator or formula id
+					warn('filter condition for discovery rule \'%s\' uses an operator or formula ID that cannot be converted - dropping' % discovery_rule_name)
+					node.clear()
 
 class FixApplicationPrototypes(ConversionRule):
 	"""
@@ -272,7 +274,7 @@ class FixTriggerOperators(ConversionRule):
 			raise NotApplicableError()
 
 		for triggertype in ( 'trigger', 'trigger_prototype', 'dependency' ):
-			for trigger in self.root.findall('.//%s' % triggertype):
+			for trigger in self.root.findall(f'.//{triggertype}'):
 				node = trigger.find('expression')
 				if (
 					node is not None
@@ -306,16 +308,12 @@ class FixLastTriggerFunction(ConversionRule):
 doc = ET.parse(args.file)
 root = doc.getroot()
 
-# load rules
-rules = []
-for c in ConversionRule.__subclasses__():
-	rules.append(c(root, args.output_version))
-
+rules = [c(root, args.output_version) for c in ConversionRule.__subclasses__()]
 # apply rules
 for rule in rules:
 	try:
 		rule.apply()
-		debug('Applied: %s' % rule)
+		debug(f'Applied: {rule}')
 	except NotApplicableError:
 		pass
 
